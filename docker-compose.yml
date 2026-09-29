@@ -1,0 +1,52 @@
+# 说明：本方案只跑一个 v2ray 容器，TLS 交给 CDN 或外层反向代理。
+#
+# 构建时拉取 v2fly/v2fly-core 作为二进制来源（多阶段 COPY），
+# 再基于 alpine 产出瘦身的运行时镜像。
+services:
+  v2ray:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        V2RAY_VERSION: ${V2RAY_VERSION:-v5.41.0}
+    image: v2ray-deploy:${V2RAY_VERSION:-v5.41.0}
+    container_name: v2ray
+    restart: unless-stopped
+    # 变量经 compose 从同目录 .env 读取（cp .env.example .env 后修改）。
+    # 不用 env_file，避免 .env 缺失时 compose 直接报错。
+    environment:
+      V2RAY_PORT: ${V2RAY_PORT:-10000}
+      V2RAY_WS_PATH: ${V2RAY_WS_PATH:-/vless-ws}
+      V2RAY_UUID: ${V2RAY_UUID:-}
+      V2RAY_WS_HOST: ${V2RAY_WS_HOST:-}
+      V2RAY_LOG_LEVEL: ${V2RAY_LOG_LEVEL:-warning}
+      V2RAY_LOG_ACCESS: ${V2RAY_LOG_ACCESS:-}
+      V2RAY_LOG_ERROR: ${V2RAY_LOG_ERROR:-}
+      V2RAY_SNIFFING: ${V2RAY_SNIFFING:-true}
+      V2RAY_DOMAIN_STRATEGY: ${V2RAY_DOMAIN_STRATEGY:-UseIP}
+      V2RAY_BLOCK_PRIVATE: ${V2RAY_BLOCK_PRIVATE:-true}
+    ports:
+      - "${LISTEN_ADDR:-0.0.0.0}:${V2RAY_PORT:-10000}:${V2RAY_PORT:-10000}"
+    volumes:
+      # UUID 持久化：不设 V2RAY_UUID 时，重启后 UUID 保持不变。
+      - ./data:/etc/v2ray
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      # 明文 WS 端口对未经升级的 HTTP 请求返回 404，据此判断进程在监听。
+      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://127.0.0.1:${V2RAY_PORT:-10000}/ 2>&1 | grep -q 'HTTP/'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

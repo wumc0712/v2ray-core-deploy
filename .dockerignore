@@ -1,0 +1,10 @@
+# 构建上下文里不需要进镜像的东西
+.git
+.gitignore
+.env
+.env.example
+docker-compose.yml
+README.md
+data/
+docs/
+*.log
