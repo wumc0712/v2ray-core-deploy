@@ -1,5 +1,5 @@
 #!/bin/sh
-# v2ray-deploy 容器入口。
+# v2ray-core-deploy 容器入口。
 #
 # 职责：把 config/config.json.template 与容器环境变量合成为运行时配置，启动 v2ray。
 # 只依赖 /bin/sh，不引入外部解释器。

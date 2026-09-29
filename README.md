@@ -1,4 +1,4 @@
-# v2ray-deploy
+# v2ray-core-deploy
 
 [v2ray-core](https://github.com/v2fly/v2ray-core) 的服务端 Docker 方案，协议为 **VLESS + WebSocket**。
 
@@ -43,7 +43,7 @@ docker compose logs -f v2ray
 仅用 Docker 不借助 compose：
 
 ```bash
-docker build -t v2ray-deploy:v5.41.0 .
+docker build -t v2ray-core-deploy:v5.41.0 .
 
 docker run -d --name v2ray \
   -p 10000:10000 \
@@ -51,7 +51,7 @@ docker run -d --name v2ray \
   -e V2RAY_WS_PATH=/vless-ws \
   -e V2RAY_UUID=97a8d9c0-1b2e-4f30-8a41-5c6d7e8f9012 \
   -v "$PWD/data:/etc/v2ray" \
-  v2ray-deploy:v5.41.0
+  v2ray-core-deploy:v5.41.0
 ```
 
 ## 服务端配置
@@ -155,7 +155,7 @@ docker compose exec v2ray cat /run/v2ray/config.json
 分享链接形式：
 
 ```
-vless://<UUID>@your.domain.com:443?encryption=none&security=tls&type=ws&host=your.domain.com&sni=your.domain.com&path=%2Fvless-ws#v2ray-deploy
+vless://<UUID>@your.domain.com:443?encryption=none&security=tls&type=ws&host=your.domain.com&sni=your.domain.com&path=%2Fvless-ws#v2ray-core-deploy
 ```
 
 ## 安全注意事项

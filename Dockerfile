@@ -16,7 +16,7 @@ FROM alpine:3.21
 
 ARG V2RAY_VERSION
 
-LABEL org.opencontainers.image.title="v2ray-deploy" \
+LABEL org.opencontainers.image.title="v2ray-core-deploy" \
       org.opencontainers.image.description="v2ray-core 服务端，VLESS + WebSocket" \
       org.opencontainers.image.source="https://github.com/v2fly/v2ray-core" \
       org.opencontainers.image.version="${V2RAY_VERSION}"
