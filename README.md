@@ -158,6 +158,41 @@ docker compose exec v2ray cat /run/v2ray/config.json
 vless://<UUID>@your.domain.com:443?encryption=none&security=tls&type=ws&host=your.domain.com&sni=your.domain.com&path=%2Fvless-ws#v2ray-core-deploy
 ```
 
+## 生成分享链接
+
+`scripts/share-link.sh` 按 `.env` 拼出可直接导入客户端的 VLESS 链接，在仓库根目录执行（脚本无 shebang 可执行位，统一用 `sh` 调用；想直接 `./scripts/share-link.sh` 需先 `chmod +x`）：
+
+```bash
+sh scripts/share-link.sh .env                # 完整输出：参数回显 + 链接
+sh scripts/share-link.sh .env | tail -n 1    # 只要链接本身
+```
+
+不传参数则直接读当前环境变量：
+
+```bash
+set -a; . ./.env; set +a; sh scripts/share-link.sh | tail -n 1
+```
+
+取值顺序与来源：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `V2RAY_UUID` / `./data/uuid` | — | 环境变量优先，其次读 `V2RAY_UUID_FILE`，再退回 `./data/uuid`（容器生成的 UUID 就落在这里） |
+| `V2RAY_SHARE_HOST` 或 `V2RAY_WS_HOST` | — | **必填**，客户端实际连接的域名（走 CDN 就填 CDN 域名） |
+| `V2RAY_SHARE_PORT` | `443` | 客户端连接端口 |
+| `V2RAY_WS_PATH` | `/vless-ws` | 与服务端保持一致 |
+| `V2RAY_SHARE_SNI` | 同 HOST | TLS SNI |
+| `V2RAY_SHARE_LABEL` | `v2ray-core-deploy` | 链接 `#` 后的备注名 |
+| `V2RAY_SHARE_INSECURE` | `false` | 置 `true` 会在链接里带上 `allowInsecure=1` |
+
+Windows 上脚本不能在 PowerShell 里直接跑，用 WSL 或 Git Bash（`sh scripts/share-link.sh .env`）：
+
+```powershell
+wsl -e sh scripts/share-link.sh .env
+# 或
+& "C:\Program Files\Git\bin\bash.exe" -c "sh scripts/share-link.sh .env"
+```
+
 ## 安全注意事项
 
 - **服务端不做 TLS，明文 WS 端口不要直接暴露到公网**；务必置于 CDN 或反代之后。

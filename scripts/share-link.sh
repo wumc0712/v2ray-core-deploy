@@ -67,16 +67,16 @@ fi
 
 # ------------------------------------------------------------ URL 编码 ----
 # busybox 无现代 sed，用 od 逐字节判断，按 RFC 3986 unreserved 之外全部百分号编码。
-# 转义格式用 sprintf 的 %%%02X 规避 printf 前导零被当作八进制的问题。
+# 转义用 POSIX 的 \NNN（八进制）：printf 的 \xHH 在 dash/bash 下不通用，容器里是 ash。
 urlencode() {
     str="$1"
     out=""
-    hex="$(printf '%s' "$str" | od -An -v -tx1 | tr -d ' \n')"
+    hex="$(printf '%s' "$str" | od -An -v -tx1 | tr -d ' \n' | tr 'a-f' 'A-F')"
     while [ -n "$hex" ]; do
         byte="${hex%"${hex#??}"}"
         hex="${hex#??}"
         case "$byte" in
-            2D|2E|5F|7E|3[0-9]|4[1-9A-F]|5[0-9A]|6[1-9A-F]|7[0-9A]) out="$out$(printf "\\$(printf '%%%02X' 0x$byte)")" ;;
+            2D|2E|5F|7E|3[0-9]|4[1-9A-F]|5[0-9A]|6[1-9A-F]|7[0-9A]) out="$out$(printf "\\$(printf '%03o' "0x$byte")")" ;;
             *) out="$out$(printf '%%%s' "$byte")" ;;
         esac
     done
