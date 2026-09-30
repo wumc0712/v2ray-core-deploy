@@ -13,9 +13,11 @@
 ├── .env.example                变量说明，复制为 .env 使用
 ├── config/
 │   └── config.json.template    配置模板，占位符由入口脚本替换
-└── docker/
-    ├── entrypoint.sh           渲染配置 + 校验环境变量 + 分支 v4/v5 CLI
-    └── extract-artifacts.sh    在 builder 阶段定位并抽出发行产物
+├── docker/
+│   ├── entrypoint.sh           渲染配置 + 校验环境变量 + 启动前生成分享链接
+│   └── extract-artifacts.sh    在 builder 阶段定位并抽出发行产物
+└── scripts/
+    └── share-link.sh           生成 VLESS 分享链接；也会装进镜像供容器内调用
 ```
 
 ## 构建方式
@@ -84,6 +86,8 @@ docker compose exec v2ray cat /run/v2ray/config.json
 | `V2RAY_UUID` | 空 | 留空则首次启动生成并持久化到 `./data/uuid` |
 | `V2RAY_EMAIL` | `vless-ws` | 日志中标识该客户端，便于区分 |
 | `V2RAY_WS_HOST` | 空 | 限定 `Host` 头，留空不校验；配合 CDN 时可设为你的域名 |
+| `V2RAY_SHARE_HOST` | 空 | 客户端实际连接的域名（走 CDN 就填 CDN 域名），用于生成分享链接；留空回退到 `V2RAY_WS_HOST` |
+| `V2RAY_SHARE_PORT` | `443` | 分享链接里的端口 |
 | `V2RAY_LOG_LEVEL` | `warning` | `debug`/`info`/`warning`/`error`/`none` |
 | `V2RAY_LOG_ACCESS` | 空 | 留空输出到容器 stdout |
 | `V2RAY_LOG_ERROR` | 空 | 留空输出到容器 stderr |
@@ -160,20 +164,54 @@ vless://<UUID>@your.domain.com:443?encryption=none&security=tls&type=ws&host=you
 
 ## 生成分享链接
 
-`scripts/share-link.sh` 按 `.env` 拼出可直接导入客户端的 VLESS 链接，在仓库根目录执行（脚本无 shebang 可执行位，统一用 `sh` 调用；想直接 `./scripts/share-link.sh` 需先 `chmod +x`）：
+`scripts/share-link.sh` 拼出可直接导入客户端的 VLESS 链接。**服务部署完成后无需手动执行**：入口脚本 `docker/entrypoint.sh` 会在启动 v2ray 前自动跑一次，把结果同时打进容器日志并写入文件。
+
+### 容器内自动生成（部署完直接取）
+
+结果写在 `/etc/v2ray/share-link.txt`，即宿主机的 `./data/share-link.txt`（该目录本就在挂载卷里）：
+
+```bash
+cat data/share-link.txt
+docker compose logs v2ray | grep 'vless://'
+```
+
+文件末尾那行就是链接，直接整行复制：
+
+```
+vless://<UUID>@<你的域名>:443?encryption=none&security=tls&type=ws&host=<你的域名>&sni=<你的域名>&path=%2Fvless-ws#v2ray-core-deploy
+```
+
+链接里的域名取自 `V2RAY_SHARE_HOST`（未设置则回退到 `V2RAY_WS_HOST`）。两者都没设时，域名位置是占位符 `your.domain.com`，日志里会给出一条警告——容器照常启动，进容器改一下再重跑即可。
+
+### 容器内手动重跑
+
+`share-link.sh` 已被装进镜像（`/usr/local/bin/share-link.sh`，与 `docker-entrypoint.sh` 同目录），换域名后可直接重跑，结果同样写回 `/etc/v2ray/share-link.txt`：
+
+```bash
+docker compose exec v2ray sh -c \
+  'V2RAY_SHARE_HOST=your.domain.com V2RAY_SHARE_OUT=/etc/v2ray/share-link.txt /usr/local/bin/share-link.sh'
+```
+
+也可只在容器里看，不落盘：
+
+```bash
+docker compose exec v2ray sh -c 'V2RAY_SHARE_HOST=your.domain.com /usr/local/bin/share-link.sh' | tail -n 1
+```
+
+### 在宿主机上运行
 
 ```bash
 sh scripts/share-link.sh .env                # 完整输出：参数回显 + 链接
 sh scripts/share-link.sh .env | tail -n 1    # 只要链接本身
 ```
 
-不传参数则直接读当前环境变量：
+脚本在 git 里没有可执行位，统一用 `sh` 调用；想直接 `./scripts/share-link.sh` 需先 `chmod +x`。不传参数则直接读当前环境变量：
 
 ```bash
 set -a; . ./.env; set +a; sh scripts/share-link.sh | tail -n 1
 ```
 
-取值顺序与来源：
+### 变量取值
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
@@ -184,8 +222,12 @@ set -a; . ./.env; set +a; sh scripts/share-link.sh | tail -n 1
 | `V2RAY_SHARE_SNI` | 同 HOST | TLS SNI |
 | `V2RAY_SHARE_LABEL` | `v2ray-core-deploy` | 链接 `#` 后的备注名 |
 | `V2RAY_SHARE_INSECURE` | `false` | 置 `true` 会在链接里带上 `allowInsecure=1` |
+| `V2RAY_SHARE_OUT` | 空 | 设置后把完整输出另存到该路径（容器内由入口脚本设为 `/etc/v2ray/share-link.txt`）；写失败只警告，不影响脚本退出码 |
+| `V2RAY_UUID_FILE` | `/etc/v2ray/uuid` | UUID 持久化文件，容器内即宿主 `./data/uuid` |
 
-Windows 上脚本不能在 PowerShell 里直接跑，用 WSL 或 Git Bash（`sh scripts/share-link.sh .env`）：
+### Windows 上用 WSL 或 Git Bash
+
+脚本不能在 PowerShell 里直接跑：
 
 ```powershell
 wsl -e sh scripts/share-link.sh .env

@@ -235,5 +235,56 @@ esac
 V2RAY_VERSION_FILE="${V2RAY_VERSION_FILE:-/usr/local/share/v2ray/.v2ray-version}"
 BUILT_VERSION="$(cat "$V2RAY_VERSION_FILE" 2>/dev/null || echo '未知')"
 
+# ------------------------------------------------------------ 分享链接 -----
+# 启动前顺手生成一次 VLESS 分享链接，落盘到挂载目录，省得再进容器手动拼。
+# 部署完成后仍可在容器内随时重跑（结果同样写到该文件）：
+#   V2RAY_SHARE_HOST=你的域名 sh /usr/local/bin/share-link.sh
+SHARE_LINK_BIN="${V2RAY_SHARE_BIN:-/usr/local/bin/share-link.sh}"
+SHARE_LINK_FILE="${V2RAY_SHARE_FILE:-$(dirname "$UUID_FILE")/share-link.txt}"
+# 域名：V2RAY_SHARE_HOST 优先，未设置时退回 V2RAY_WS_HOST（它的语义是校验 Host 头）。
+V2RAY_SHARE_HOST="${V2RAY_SHARE_HOST:-$V2RAY_WS_HOST}"
+V2RAY_SHARE_PORT="${V2RAY_SHARE_PORT:-443}"
+
+if [ -n "$V2RAY_SHARE_HOST" ]; then
+    if ! printf '%s' "$V2RAY_SHARE_HOST" | grep -Eq '^[A-Za-z0-9.-]+$'; then
+        die "V2RAY_SHARE_HOST 含有非法字符：$V2RAY_SHARE_HOST"
+    fi
+else
+    # 不阻断启动：域名是客户端侧的参数，服务端照样能跑起来。
+    V2RAY_SHARE_HOST="your.domain.com"
+    log "警告：V2RAY_SHARE_HOST 与 V2RAY_WS_HOST 均未设置，链接里的域名暂用占位符 $V2RAY_SHARE_HOST"
+fi
+
+case "$V2RAY_SHARE_PORT" in
+    ''|*[!0-9]*) die "V2RAY_SHARE_PORT 必须为数字：$V2RAY_SHARE_PORT" ;;
+esac
+
+if [ -x "$SHARE_LINK_BIN" ]; then
+    # V2RAY_UUID 是 shell 变量（未导出），显式传给脚本，不依赖环境继承。
+    # 脚本失败绝不能拖垮 entrypoint（set -e 下命令替换失败会直接终止），
+    # 因此这里用 if 兜住退出码，再按情况回显。
+    SHARE_TEXT=""
+    if SHARE_TEXT="$(V2RAY_SHARE_OUT="$SHARE_LINK_FILE" \
+                     V2RAY_UUID="$V2RAY_UUID" \
+                     V2RAY_UUID_FILE="$UUID_FILE" \
+                     V2RAY_WS_PATH="$V2RAY_WS_PATH" \
+                     V2RAY_SHARE_HOST="$V2RAY_SHARE_HOST" \
+                     V2RAY_SHARE_PORT="$V2RAY_SHARE_PORT" \
+                     "$SHARE_LINK_BIN" 2>&1)"; then
+        :
+    else
+        log "警告：生成分享链接时脚本返回非零码，以下为其输出"
+    fi
+    # 逐行套上时间戳前缀，便于 docker logs 里辨认。
+    printf '%s\n' "$SHARE_TEXT" | while IFS= read -r SHARE_LINE; do log "$SHARE_LINE"; done
+    if [ -s "$SHARE_LINK_FILE" ]; then
+        log "分享链接已写入 $SHARE_LINK_FILE"
+    else
+        log "警告：未能写入 $SHARE_LINK_FILE，链接见上方日志"
+    fi
+else
+    log "警告：未找到分享链接脚本 $SHARE_LINK_BIN，跳过生成"
+fi
+
 log "启动 v2ray：version=$BUILT_VERSION uuid=$V2RAY_UUID port=$V2RAY_PORT path=$V2RAY_WS_PATH host=${V2RAY_WS_HOST:-<任意>}"
 exec "$V2RAY_BIN" "$@"

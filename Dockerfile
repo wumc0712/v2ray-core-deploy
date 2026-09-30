@@ -39,9 +39,10 @@ COPY --from=builder /out/geosite.dat /usr/local/share/v2ray/geosite.dat
 
 COPY config/config.json.template /usr/local/share/v2ray/config.json.template
 COPY docker/entrypoint.sh        /usr/local/bin/docker-entrypoint.sh
+COPY scripts/share-link.sh       /usr/local/bin/share-link.sh
 
 RUN set -eux; \
-    chmod +x /usr/local/bin/v2ray /usr/local/bin/docker-entrypoint.sh; \
+    chmod +x /usr/local/bin/v2ray /usr/local/bin/docker-entrypoint.sh /usr/local/bin/share-link.sh; \
     printf '%s\n' "${V2RAY_VERSION}" > "${V2RAY_VERSION_FILE}"; \
     # 冒烟测试：确认二进制可执行且是 v2ray。v4 认 -version，v5 只有 version 子命令。
     ( /usr/local/bin/v2ray -version || /usr/local/bin/v2ray version ) 2>&1 | grep -q 'V2Ray'

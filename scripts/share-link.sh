@@ -4,6 +4,7 @@
 # 用法：
 #   ./scripts/share-link.sh .env
 #   ./scripts/share-link.sh            # 直接读环境变量
+#   V2RAY_SHARE_OUT=/etc/v2ray/share-link.txt ./scripts/share-link.sh
 #
 # 想拿到可直接复制的链接，建议不带注释执行：
 #   set -a; . ./.env; set +a; ./scripts/share-link.sh | tail -n 1
@@ -49,6 +50,7 @@ if [ -z "$UUID" ] && [ -s "./data/uuid" ]; then
     UUID="$(tr -d ' \t\r\n' < ./data/uuid)"
 fi
 
+# 容器内没有 V2RAY_SHARE_HOST 时，回退到 V2RAY_WS_HOST（两者都为空则报错退出）。
 HOST="${V2RAY_SHARE_HOST:-${V2RAY_WS_HOST:-}}"
 PORT="${V2RAY_SHARE_PORT:-443}"
 WS_PATH="${V2RAY_WS_PATH:-/vless-ws}"
@@ -103,7 +105,7 @@ ENC_LABEL="$(urlencode "$LABEL")"
 LINK="vless://${ENC_UUID}@${HOST}:${PORT}?encryption=none&security=${SECURITY_PARAM}&type=ws&host=${HOST}&sni=${ENC_SNI}&path=${ENC_PATH}#${ENC_LABEL}"
 
 # ---------------------------------------------------------------- 输出 ----
-cat <<EOF
+OUT="$(cat <<EOF
 # 生成参数（请核对与 .env 一致）
 UUID     = ${UUID}
 地址     = ${HOST}
@@ -115,3 +117,15 @@ WS 路径  = ${WS_PATH}
 # 分享链接（整行复制）
 ${LINK}
 EOF
+)"
+
+printf '%s\n' "$OUT"
+
+# 容器内由入口脚本设置 V2RAY_SHARE_OUT，把结果同时落到可读文件里。
+# 写文件是附加能力：失败只警告，不影响 stdout 的链接与退出码。
+if [ -n "${V2RAY_SHARE_OUT:-}" ]; then
+    if ! ( umask 077; mkdir -p "$(dirname "$V2RAY_SHARE_OUT")" && \
+           printf '%s\n' "$OUT" > "$V2RAY_SHARE_OUT" ) 2>/dev/null; then
+        echo "警告：无法写入 $V2RAY_SHARE_OUT，请直接使用上面的链接。" >&2
+    fi
+fi
